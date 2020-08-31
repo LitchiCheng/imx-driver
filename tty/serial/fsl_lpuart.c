@@ -31,6 +31,7 @@
 #include <linux/serial_core.h>
 #include <linux/slab.h>
 #include <linux/tty_flip.h>
+#include <linux/gpio.h>
 
 /* All registers are 8-bit width */
 #define UARTBDH			0x00
@@ -71,10 +72,10 @@
 #define UARTCR2_RWU		0x02
 #define UARTCR2_SBK		0x01
 
-#define UARTSR1_TDRE		0x80
-#define UARTSR1_TC		0x40
-#define UARTSR1_RDRF		0x20
-#define UARTSR1_IDLE		0x10
+#define UARTSR1_TDRE		0x80	//transmit data register empty
+#define UARTSR1_TC		0x40	//transmit complete
+#define UARTSR1_RDRF		0x20	//reciever data register full
+#define UARTSR1_IDLE		0x10	//
 #define UARTSR1_OR		0x08
 #define UARTSR1_NF		0x04
 #define UARTSR1_FE		0x02
@@ -254,6 +255,8 @@
 #define DEV_NAME	"ttyLP"
 #define UART_NR		6
 
+static struct lpuart_port *lpuart_ports[UART_NR];
+
 /* IMX lpuart has four extra unused regs located at the beginning */
 #define IMX_REG_OFF	0x10
 
@@ -391,6 +394,9 @@ static void lpuart_stop_tx(struct uart_port *port)
 	temp = readb(port->membase + UARTCR2);
 	temp &= ~(UARTCR2_TIE | UARTCR2_TCIE);
 	writeb(temp, port->membase + UARTCR2);
+	if(strcmp("ttyLP0", port->name) == 0){
+		gpio_direction_output(338,0);
+	}
 }
 
 static void lpuart32_stop_tx(struct uart_port *port)
@@ -400,6 +406,9 @@ static void lpuart32_stop_tx(struct uart_port *port)
 	temp = lpuart32_read(port, UARTCTRL);
 	temp &= ~(UARTCTRL_TIE | UARTCTRL_TCIE);
 	lpuart32_write(port, temp, UARTCTRL);
+	if(strcmp("ttyLP0",port->name) == 0){
+		gpio_direction_output(338,0);
+	}
 }
 
 static void lpuart_stop_rx(struct uart_port *port)
@@ -524,6 +533,9 @@ static void lpuart_dma_tx_complete(void *arg)
 		lpuart_dma_tx(sport);
 
 	spin_unlock_irqrestore(&sport->port.lock, flags);
+	if(strcmp("ttyLP0", sport->port.name) == 0){
+		gpio_direction_output(338,0);	
+	}	
 }
 
 static int lpuart_dma_tx_request(struct uart_port *port)
@@ -734,6 +746,10 @@ static void lpuart_start_tx(struct uart_port *port)
 			struct lpuart_port, port);
 	struct circ_buf *xmit = &sport->port.state->xmit;
 	unsigned char temp;
+	if(strcmp("ttyLP0", sport->port.name) == 0){
+		gpio_direction_output(338,1);
+	}
+		
 
 	if (sport->lpuart_dma_tx_use) {
 		if (!uart_circ_empty(xmit) && !uart_tx_stopped(port))
@@ -752,7 +768,9 @@ static void lpuart32_start_tx(struct uart_port *port)
 	struct lpuart_port *sport = container_of(port, struct lpuart_port, port);
 	struct circ_buf *xmit = &sport->port.state->xmit;
 	unsigned long temp;
-
+	if(strcmp("ttyLP0",sport->port.name) == 0){
+		gpio_direction_output(338,1);
+	}
 	if (sport->lpuart_dma_tx_use) {
 		if (!uart_circ_empty(xmit) && !uart_tx_stopped(port))
 			lpuart_dma_tx(sport);
@@ -1600,6 +1618,9 @@ static int lpuart_startup(struct uart_port *port)
 	writeb(temp, sport->port.membase + UARTCR2);
 
 	spin_unlock_irqrestore(&sport->port.lock, flags);
+	if(strcmp("ttyLP0",sport->port.name) == 0){
+		gpio_direction_output(338,0);
+	}
 	return 0;
 }
 
@@ -1665,6 +1686,9 @@ static int lpuart32_startup(struct uart_port *port)
 	lpuart32_write(&sport->port, temp, UARTCTRL);
 
 	spin_unlock_irqrestore(&sport->port.lock, flags);
+	if(strcmp("ttyLP0",sport->port.name) == 0){
+		gpio_direction_output(338,0);
+	}
 	return 0;
 }
 
@@ -2208,7 +2232,6 @@ static const struct uart_ops lpuart32_pops = {
 #endif
 };
 
-static struct lpuart_port *lpuart_ports[UART_NR];
 
 #ifdef CONFIG_SERIAL_FSL_LPUART_CONSOLE
 static void lpuart_console_putchar(struct uart_port *port, int ch)
@@ -2655,7 +2678,7 @@ static int lpuart_probe(struct platform_device *pdev)
 		sport->port.rs485_config(&sport->port, &sport->port.rs485);
 		spin_unlock_irqrestore(&sport->port.lock, flags);
 	}
-
+	dev_info(sport->port.dev, "dev info is %s\n", sport->port.name);
 	return 0;
 
 failed_attach_port:
